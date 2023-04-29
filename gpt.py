@@ -82,11 +82,15 @@ class Head(nn.Module):
         k = self.key(x)   # (B,T,hs)
         q = self.query(x) # (B,T,hs)
         # compute attention scores ("affinities")
+        # these are found by taking the dot product of queries with the keys (transpose needed on final two dimensions for this to work)
         wei = q @ k.transpose(-2,-1) * k.shape[-1]**-0.5 # (B, T, hs) @ (B, hs, T) -> (B, T, T)
-        wei = wei.masked_fill(self.tril[:T, :T] == 0, float('-inf')) # (B, T, T)
-        wei = F.softmax(wei, dim=-1) # (B, T, T)
+        # define the strength of interation between different tokens in the block. A given token can only interact with past tokens, so use -inf to encode this forbidden interation. 0 gives a neutral interaction.
+        wei = wei.masked_fill(self.tril[:T, :T] == 0, float('-inf')) # (B, T, T) -- create a triangular matrix T*T with -inf in upper-right block and 0 in lower-left block
+        # convert to a matrix used for multiplication
+        # initially this will be an averaging matrix, where matrix multiplication results in each new element being the average of itself and all the preceding elements
+        wei = F.softmax(wei, dim=-1)  # (B, T, T)
         wei = self.dropout(wei)
-        # perform the weighted aggregation of the values
+        # perform the weighted aggregation of the values - values found through another linear layer
         v = self.value(x) # (B,T,hs)
         out = wei @ v # (B, T, T) @ (B, T, hs) -> (B, T, hs)
         return out
@@ -143,9 +147,11 @@ class GPTLanguageModel(nn.Module):
         super().__init__()
         # each token directly reads off the logits for the next token from a lookup table
         self.token_embedding_table = nn.Embedding(vocab_size, n_embd)
+        # not only do we care about the value of a given token, but also about its position in the sequence of block_size (8).
+        # A token at position 5 might have different interaction behaviours with its previous tokens compared to a token at position 2.
         self.position_embedding_table = nn.Embedding(block_size, n_embd)
         self.blocks = nn.Sequential(*[Block(n_embd, n_head=n_head) for _ in range(n_layer)])
-        self.ln_f = nn.LayerNorm(n_embd) # final layer norm
+        self.ln_f = nn.LayerNorm(n_embd) # final layer norm - instead of going straight from x to logit we pass through a layer first, via tok_emb below
         self.lm_head = nn.Linear(n_embd, vocab_size)
 
         # better init, not covered in the original GPT video, but important, will cover in followup video
@@ -163,7 +169,7 @@ class GPTLanguageModel(nn.Module):
         B, T = idx.shape # Batch [4], Time [8]
 
         # idx and targets are both (B,T) tensor of integers
-        tok_emb = self.token_embedding_table(idx) # shape (B,T,C)  (Batch [4], Time [8], Channel[vocab_length])
+        tok_emb = self.token_embedding_table(idx) # shape (B,T,C)  (Batch [4], Time [8], n_embed [32])
         pos_emb = self.position_embedding_table(torch.arange(T)) # (T,C)
         x = tok_emb + pos_emb # (B,T,C)  -- when we add two pytorch tensors, if one is missing a dimension at the start (in this case pos_emb is missing the B dimension), that dimension is copied over and over in the sum x
         x = self.blocks(x) # (B,T,C) -- run x through the series of layers
@@ -199,6 +205,8 @@ class GPTLanguageModel(nn.Module):
 
 model = GPTLanguageModel()
 m = model
+print('model structure:')
+print(m)
 # print the number of parameters in the model
 print(sum(p.numel() for p in m.parameters())/1e6, 'M parameters')
 
