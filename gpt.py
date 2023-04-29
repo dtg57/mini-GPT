@@ -9,16 +9,17 @@ max_iters = 1000 # max number of iterations to update the model
 eval_interval = 50 # how often to calculate and output loss
 learning_rate = 5e-3
 eval_iters = 200
-n_embd = 32 #
+n_embd = 32 # size of our embedding layer
 n_head = 6
 n_layer = 6 # number of layers in model
 dropout = 0.2 # dropout regularisation level (weights set to zero with this probability)
+train_val_split = 0.9
 # ------------
 
-torch.manual_seed(1337)
+torch.manual_seed(7890)
 
 # read training data input file
-with open('input.txt', 'r', encoding='utf-8') as f:
+with open('input-dan-project.txt', 'r', encoding='utf-8') as f:
     text = f.read()
 
 # here are all the unique characters that occur in this text
@@ -34,7 +35,8 @@ decode = lambda l: ''.join([itos[i] for i in l]) # decoder: take a list of integ
 
 # Train and test splits
 data = torch.tensor(encode(text), dtype=torch.long)
-n = int(0.9*len(data)) # first 90% will be train, rest val
+# partition data into training and validation
+n = int(train_val_split*len(data))
 train_data = data[:n]
 val_data = data[n:]
 
@@ -124,7 +126,7 @@ class Block(nn.Module):
     def __init__(self, n_embd, n_head):
         # n_embd: embedding dimension, n_head: the number of heads we'd like
         super().__init__()
-        head_size = n_embd // n_head
+        head_size = n_embd // n_head # floor division, a // b = floor(a/b)
         self.sa = MultiHeadAttention(n_head, head_size)
         self.ffwd = FeedFoward(n_embd)
         self.ln1 = nn.LayerNorm(n_embd)
@@ -147,7 +149,7 @@ class GPTLanguageModel(nn.Module):
         self.lm_head = nn.Linear(n_embd, vocab_size)
 
         # better init, not covered in the original GPT video, but important, will cover in followup video
-        self.apply(self._init_weights)
+        self.apply(self._init_weights) # initialise weights
 
     def _init_weights(self, module):
         if isinstance(module, nn.Linear):
@@ -158,13 +160,13 @@ class GPTLanguageModel(nn.Module):
             torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
 
     def forward(self, idx, targets=None):
-        B, T = idx.shape
+        B, T = idx.shape # Batch [4], Time [8]
 
         # idx and targets are both (B,T) tensor of integers
-        tok_emb = self.token_embedding_table(idx) # (B,T,C)
+        tok_emb = self.token_embedding_table(idx) # shape (B,T,C)  (Batch [4], Time [8], Channel[vocab_length])
         pos_emb = self.position_embedding_table(torch.arange(T)) # (T,C)
-        x = tok_emb + pos_emb # (B,T,C)
-        x = self.blocks(x) # (B,T,C)
+        x = tok_emb + pos_emb # (B,T,C)  -- when we add two pytorch tensors, if one is missing a dimension at the start (in this case pos_emb is missing the B dimension), that dimension is copied over and over in the sum x
+        x = self.blocks(x) # (B,T,C) -- run x through the series of layers
         x = self.ln_f(x) # (B,T,C)
         logits = self.lm_head(x) # (B,T,vocab_size)
 
@@ -215,8 +217,11 @@ for iter in range(max_iters):
 
     # evaluate the loss
     logits, loss = model(xb, yb)
+    # set gradients to zero, otherwise new gradients will be added to old ones
     optimizer.zero_grad(set_to_none=True)
+    # calculate and store new gradients
     loss.backward()
+    # iterate the model
     optimizer.step()
 
 # generate from the model
