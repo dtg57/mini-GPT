@@ -3,28 +3,29 @@ import torch.nn as nn
 from torch.nn import functional as F
 
 # hyperparameters
-batch_size = 64 # how many independent sequences will we process in parallel?
-block_size = 256 # what is the maximum context length for predictions?
-max_iters = 5000
-eval_interval = 500
-learning_rate = 3e-4
-device = 'cuda' if torch.cuda.is_available() else 'cpu'
+batch_size = 64 # how many independent sequences to process in parallel (this improves efficiency of GPUs)
+block_size = 8 # what is the maximum context length for predictions?
+max_iters = 1000 # max number of iterations to update the model
+eval_interval = 50 # how often to calculate and output loss
+learning_rate = 5e-3
 eval_iters = 200
-n_embd = 384
+n_embd = 32 #
 n_head = 6
-n_layer = 6
-dropout = 0.2
+n_layer = 6 # number of layers in model
+dropout = 0.2 # dropout regularisation level (weights set to zero with this probability)
 # ------------
 
 torch.manual_seed(1337)
 
-# wget https://raw.githubusercontent.com/karpathy/char-rnn/master/data/tinyshakespeare/input.txt
+# read training data input file
 with open('input.txt', 'r', encoding='utf-8') as f:
     text = f.read()
 
 # here are all the unique characters that occur in this text
 chars = sorted(list(set(text)))
+print('Vocab:', ''.join(chars))
 vocab_size = len(chars)
+print('Vocab size:', vocab_size)
 # create a mapping from characters to integers
 stoi = { ch:i for i,ch in enumerate(chars) }
 itos = { i:ch for i,ch in enumerate(chars) }
@@ -44,7 +45,6 @@ def get_batch(split):
     ix = torch.randint(len(data) - block_size, (batch_size,))
     x = torch.stack([data[i:i+block_size] for i in ix])
     y = torch.stack([data[i+1:i+block_size+1] for i in ix])
-    x, y = x.to(device), y.to(device)
     return x, y
 
 @torch.no_grad()
@@ -162,7 +162,7 @@ class GPTLanguageModel(nn.Module):
 
         # idx and targets are both (B,T) tensor of integers
         tok_emb = self.token_embedding_table(idx) # (B,T,C)
-        pos_emb = self.position_embedding_table(torch.arange(T, device=device)) # (T,C)
+        pos_emb = self.position_embedding_table(torch.arange(T)) # (T,C)
         x = tok_emb + pos_emb # (B,T,C)
         x = self.blocks(x) # (B,T,C)
         x = self.ln_f(x) # (B,T,C)
@@ -196,7 +196,7 @@ class GPTLanguageModel(nn.Module):
         return idx
 
 model = GPTLanguageModel()
-m = model.to(device)
+m = model
 # print the number of parameters in the model
 print(sum(p.numel() for p in m.parameters())/1e6, 'M parameters')
 
@@ -220,6 +220,6 @@ for iter in range(max_iters):
     optimizer.step()
 
 # generate from the model
-context = torch.zeros((1, 1), dtype=torch.long, device=device)
+context = torch.zeros((1, 1), dtype=torch.long)
 print(decode(m.generate(context, max_new_tokens=500)[0].tolist()))
 #open('more.txt', 'w').write(decode(m.generate(context, max_new_tokens=10000)[0].tolist()))
