@@ -1,15 +1,18 @@
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
+import time
+
+start_time = time.process_time()
 
 # hyperparameters
 batch_size = 64 # how many independent sequences to process in parallel (this improves efficiency of GPUs)
-block_size = 8 # what is the maximum context length for predictions?
+block_size = 32 # what is the maximum context length for predictions?
 max_iters = 1000 # max number of iterations to update the model
-eval_interval = 50 # how often to calculate and output loss
-learning_rate = 5e-3
+eval_interval = 10 # how often to calculate and output loss
+learning_rate = 1e-3
 eval_iters = 200
-n_embd = 32 # size of our embedding layer
+n_embd = 64 # size of our embedding layer
 n_head = 6
 n_layer = 6 # number of layers in model
 dropout = 0.2 # dropout regularisation level (weights set to zero with this probability)
@@ -19,7 +22,7 @@ train_val_split = 0.9
 torch.manual_seed(7890)
 
 # read training data input file
-with open('input-dan-project.txt', 'r', encoding='utf-8') as f:
+with open('input-shakespeare.txt', 'r', encoding='utf-8') as f:
     text = f.read()
 
 # here are all the unique characters that occur in this text
@@ -235,4 +238,7 @@ for iter in range(max_iters):
 # generate from the model
 context = torch.zeros((1, 1), dtype=torch.long)
 print(decode(m.generate(context, max_new_tokens=500)[0].tolist()))
+
+end_time = time.process_time()
+print('Time taken:' + str(end_time - start_time))
 #open('more.txt', 'w').write(decode(m.generate(context, max_new_tokens=10000)[0].tolist()))
